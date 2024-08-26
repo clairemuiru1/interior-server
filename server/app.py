@@ -91,21 +91,20 @@ def login():
     if not username or not password:
         return {'error': 'Missing username or password'}, 400
 
-    # Replace this logic with your actual authentication mechanism (e.g., querying the database)
     user = User.query.filter_by(username=username).first()
 
     if user and bcrypt.check_password_hash(user._password_hash, password):
         token = jwt.encode({
-            'user': username,
-            'exp': datetime.utcnow() + timedelta(seconds=120)
+            'user_id': user.id,  # Include user ID in the token
+            'exp': datetime.utcnow() + timedelta(seconds=1800)
         },
-        app.config['SECRET_KEY'])
+        app.config['SECRET_KEY'], algorithm="HS256")
 
         return {'token': token}
 
     else:
         return {'error': 'Invalid username or password'}, 401
-    
+
 @app.route('/logout', methods=["DELETE"])
 def logout():
     session['user_id'] = None
@@ -132,16 +131,18 @@ def checksession():
     return {}, 401 
 
 @app.route('/address', methods=['POST'])
+@token_required
 def create_address():
     data = request.get_json()
+    user_id = request.args.get('user_id')  # Get user ID from the token or session
 
     # Validate incoming data
-    required_fields = ['user_id', 'street', 'city', 'state', 'zip_code', 'country']
+    required_fields = ['street', 'city', 'state', 'zip_code', 'country']
     if not all(field in data for field in required_fields):
         return jsonify({'error': 'Missing required fields'}), 400
 
     new_address = Address(
-        user_id=data['user_id'],
+        user_id=user_id,
         street=data['street'],
         city=data['city'],
         state=data['state'],
@@ -154,15 +155,18 @@ def create_address():
     
     return jsonify({'message': 'Address created successfully', 'address': new_address.id}), 201
 
-@app.route('/address/<int:id>', methods=['GET'])
-def get_address(id):
-    address = Address.query.get(id)
-    
-    if address is None:
-        return jsonify({'error': 'Address not found'}), 404
+@app.route('/addresses', methods=['GET'])
+@token_required
+def get_all_addresses():
+    user_id = request.args.get('user_id')  # Get user ID from the token or session
 
-    return jsonify({
-        'user_id': address.user_id,
+    addresses = Address.query.filter_by(user_id=user_id).all()
+
+    if not addresses:
+        return jsonify({'message': 'No addresses found for this user'}), 404
+
+    addresses_list = [{
+        'id': address.id,
         'street': address.street,
         'city': address.city,
         'state': address.state,
@@ -170,7 +174,49 @@ def get_address(id):
         'country': address.country,
         'created_at': address.created_at.isoformat(),
         'updated_at': address.updated_at.isoformat()
-    }), 200
+    } for address in addresses]
+
+    return jsonify(addresses_list), 200
+
+@app.route('/address/<int:id>', methods=['PUT'])
+@token_required
+def update_address(id):
+    data = request.get_json()
+    user_id = request.args.get('user_id')  # Get user ID from the token or session
+
+    address = Address.query.get(id)
+
+    if address is None:
+        return jsonify({'error': 'Address not found'}), 404
+
+    if address.user_id != user_id:
+        return jsonify({'error': 'Unauthorized to update this address'}), 403
+
+    # Update fields if provided in the request
+    for key in ['street', 'city', 'state', 'zip_code', 'country']:
+        if key in data:
+            setattr(address, key, data[key])
+
+    db.session.commit()
+
+    return jsonify({'message': 'Address updated successfully'}), 200
+
+@app.route('/address/<int:id>', methods=['DELETE'])
+@token_required
+def delete_address(id):
+    user_id = request.args.get('user_id')  
+    address = Address.query.get(id)
+
+    if address is None:
+        return jsonify({'error': 'Address not found'}), 404
+
+    if address.user_id != user_id:
+        return jsonify({'error': 'Unauthorized to delete this address'}), 403
+
+    db.session.delete(address)
+    db.session.commit()
+
+    return jsonify({'message': 'Address deleted successfully'}), 200
 
 if  __name__ == '__main__':
     app.run(port=5555, debug=True)
