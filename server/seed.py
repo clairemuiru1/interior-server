@@ -1,150 +1,128 @@
-from app import db, create_app  # Import create_app function and db instance
-from models import User, Product, Order, Category, Cart, Review, Address, Payment, Discount
-from datetime import datetime, timedelta
+from flask import Flask
+from flask_sqlalchemy import SQLAlchemy
+from flask_bcrypt import Bcrypt
+from datetime import datetime
+from models import db, User, Product, Category, Order, OrderItem, Review  # Adjust imports as per your project structure
 
-# Create an instance of your Flask application
-app = create_app()  # Make sure you have a create_app function that initializes your Flask app
+app = Flask(__name__)
+app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///app.db'  # Change to your database URI if needed
+app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
-# Push an application context
-with app.app_context():
-    # Drop all existing tables and create new ones
-    db.drop_all()
-    db.create_all()
+db.init_app(app)
+bcrypt = Bcrypt(app)
 
-    # Seed Users
-    user1 = User(
-        firstname="John",
-        lastname="Doe",
-        username="john_doe",
-        email="john@example.com",
-        password_hash="password123",  # Use the setter method to hash the password
-        is_admin=True,
-    )
+def seed_db():
+    with app.app_context():
+        # Clear existing data
+        db.drop_all()
+        db.create_all()
 
-    user2 = User(
-        firstname="Jane",
-        lastname="Smith",
-        username="jane_smith",
-        email="jane@example.com",
-        password_hash="password123",  # Use the setter method to hash the password
-        is_owner=False,
-    )
+        # Seed users
+        users = [
+            User(firstname="John", lastname="Doe", username="johndoe", email="johndoe@example.com", password_hash=bcrypt.generate_password_hash("password").decode('utf-8')),
+            User(firstname="Jane", lastname="Smith", username="janesmith", email="janesmith@example.com", password_hash=bcrypt.generate_password_hash("password").decode('utf-8')),
+            User(firstname="Alice", lastname="Brown", username="alicebrown", email="alicebrown@example.com", password_hash=bcrypt.generate_password_hash("password").decode('utf-8')),
+            User(firstname="Bob", lastname="Jones", username="bobjones", email="bobjones@example.com", password_hash=bcrypt.generate_password_hash("password").decode('utf-8')),
+            User(firstname="Charlie", lastname="Davis", username="charliedavis", email="charliedavis@example.com", password_hash=bcrypt.generate_password_hash("password").decode('utf-8')),
+            User(firstname="David", lastname="Evans", username="davidevans", email="davidevans@example.com", password_hash=bcrypt.generate_password_hash("password").decode('utf-8')),
+            User(firstname="Eve", lastname="Green", username="evegreen", email="evegreen@example.com", password_hash=bcrypt.generate_password_hash("password").decode('utf-8')),
+            User(firstname="Frank", lastname="Harris", username="frankharris", email="frankharris@example.com", password_hash=bcrypt.generate_password_hash("password").decode('utf-8')),
+            User(firstname="Grace", lastname="Ivy", username="graceivy", email="graceivy@example.com", password_hash=bcrypt.generate_password_hash("password").decode('utf-8')),
+            User(firstname="Henry", lastname="James", username="henryjames", email="henryjames@example.com", password_hash=bcrypt.generate_password_hash("password").decode('utf-8'))
+        ]
 
-    db.session.add_all([user1, user2])
-    db.session.commit()
+        db.session.bulk_save_objects(users)
+        db.session.commit()
 
-    # Seed Categories
-    category1 = Category(name="Electronics")
-    category2 = Category(name="Books")
+        # Seed categories
+        categories = [
+            Category(name="Living Room"),
+            Category(name="Bedroom"),
+            Category(name="Kitchen"),
+            Category(name="Bathroom"),
+            Category(name="Office"),
+            Category(name="Outdoor"),
+            Category(name="Lighting"),
+            Category(name="Decor"),
+            Category(name="Furniture"),
+            Category(name="Storage")
+        ]
 
-    db.session.add_all([category1, category2])
-    db.session.commit()
+        db.session.bulk_save_objects(categories)
+        db.session.commit()
 
-    # Seed Products
-    product1 = Product(
-        name="Smartphone",
-        description="Latest model smartphone with advanced features.",
-        price=699.99,
-        category="Electronics",
-        stock=50,
-        image_url="http://example.com/smartphone.jpg",
-        creator_id=user1.id
-    )
+        # Seed products
+        products = [
+            Product(name="Sofa", description="A comfortable three-seater sofa.", price=500.0, category_id=1),
+            Product(name="Bed", description="A king-sized bed with storage.", price=1000.0, category_id=2),
+            Product(name="Dining Table", description="A wooden dining table for six.", price=750.0, category_id=3),
+            Product(name="Shower Curtain", description="A waterproof shower curtain.", price=20.0, category_id=4),
+            Product(name="Office Chair", description="An ergonomic office chair.", price=150.0, category_id=5),
+            Product(name="Patio Set", description="An outdoor patio set with table and chairs.", price=300.0, category_id=6),
+            Product(name="Chandelier", description="A modern chandelier with LED lights.", price=200.0, category_id=7),
+            Product(name="Wall Art", description="A set of three abstract wall art pieces.", price=100.0, category_id=8),
+            Product(name="Bookshelf", description="A tall wooden bookshelf.", price=250.0, category_id=9),
+            Product(name="Wardrobe", description="A spacious wardrobe with sliding doors.", price=800.0, category_id=10)
+        ]
 
-    product2 = Product(
-        name="Fiction Book",
-        description="A gripping novel by a bestselling author.",
-        price=19.99,
-        category="Books",
-        stock=200,
-        image_url="http://example.com/book.jpg",
-        creator_id=user2.id
-    )
+        db.session.bulk_save_objects(products)
+        db.session.commit()
 
-    db.session.add_all([product1, product2])
-    db.session.commit()
+        # Seed orders
+        orders = [
+            Order(user_id=1, total_price=520.0, status="Completed"),
+            Order(user_id=2, total_price=1150.0, status="Processing"),
+            Order(user_id=3, total_price=770.0, status="Completed"),
+            Order(user_id=4, total_price=170.0, status="Shipped"),
+            Order(user_id=5, total_price=1250.0, status="Completed"),
+            Order(user_id=6, total_price=350.0, status="Processing"),
+            Order(user_id=7, total_price=220.0, status="Shipped"),
+            Order(user_id=8, total_price=900.0, status="Completed"),
+            Order(user_id=9, total_price=150.0, status="Processing"),
+            Order(user_id=10, total_price=1050.0, status="Shipped")
+        ]
 
-    # Seed Orders
-    order1 = Order(
-        user_id=user1.id,
-        total_amount=719.98,
-        status="Pending"
-    )
+        db.session.bulk_save_objects(orders)
+        db.session.commit()
 
-    db.session.add(order1)
-    db.session.commit()
+        # Seed order items
+        order_items = [
+            OrderItem(order_id=1, product_id=1, quantity=1, price=500.0),
+            OrderItem(order_id=1, product_id=4, quantity=1, price=20.0),
+            OrderItem(order_id=2, product_id=2, quantity=1, price=1000.0),
+            OrderItem(order_id=2, product_id=5, quantity=1, price=150.0),
+            OrderItem(order_id=3, product_id=3, quantity=1, price=750.0),
+            OrderItem(order_id=3, product_id=7, quantity=1, price=20.0),
+            OrderItem(order_id=4, product_id=8, quantity=1, price=100.0),
+            OrderItem(order_id=4, product_id=6, quantity=1, price=70.0),
+            OrderItem(order_id=5, product_id=9, quantity=1, price=250.0),
+            OrderItem(order_id=5, product_id=10, quantity=1, price=1000.0),
+            OrderItem(order_id=6, product_id=3, quantity=1, price=750.0),
+            OrderItem(order_id=7, product_id=2, quantity=1, price=1000.0),
+            OrderItem(order_id=8, product_id=1, quantity=1, price=500.0),
+            OrderItem(order_id=9, product_id=4, quantity=1, price=20.0),
+            OrderItem(order_id=10, product_id=5, quantity=1, price=150.0)
+        ]
 
-    # Seed Order Items
-    order_item1 = OrderItem(
-        order_id=order1.id,
-        product_id=product1.id,
-        quantity=1,
-        price=699.99
-    )
+        db.session.bulk_save_objects(order_items)
+        db.session.commit()
 
-    order_item2 = OrderItem(
-        order_id=order1.id,
-        product_id=product2.id,
-        quantity=1,
-        price=19.99
-    )
+        # Seed reviews
+        reviews = [
+            Review(user_id=1, product_id=1, rating=5, comment="Excellent sofa!"),
+            Review(user_id=2, product_id=2, rating=4, comment="Great bed."),
+            Review(user_id=3, product_id=3, rating=5, comment="Loved this dining table."),
+            Review(user_id=4, product_id=4, rating=4, comment="Very practical shower curtain."),
+            Review(user_id=5, product_id=5, rating=3, comment="Chair is okay."),
+            Review(user_id=6, product_id=6, rating=5, comment="Perfect for our patio!"),
+            Review(user_id=7, product_id=7, rating=4, comment="Nice chandelier."),
+            Review(user_id=8, product_id=8, rating=4, comment="Beautiful wall art."),
+            Review(user_id=9, product_id=9, rating=5, comment="Great bookshelf."),
+            Review(user_id=10, product_id=10, rating=5, comment="Very spacious wardrobe.")
+        ]
 
-    db.session.add_all([order_item1, order_item2])
-    db.session.commit()
+        db.session.bulk_save_objects(reviews)
+        db.session.commit()
 
-    # Seed Carts
-    cart1 = Cart(user_id=user1.id)
-
-    db.session.add(cart1)
-    db.session.commit()
-
-    # Seed Cart Items
-    cart_item1 = CartItem(cart_id=cart1.id, product_id=product1.id, quantity=1)
-
-    db.session.add(cart_item1)
-    db.session.commit()
-
-    # Seed Reviews
-    review1 = Review(user_id=user1.id, product_id=product1.id, rating=5, comment="Excellent product!")
-    review2 = Review(user_id=user2.id, product_id=product2.id, rating=4, comment="Enjoyable read.")
-
-    db.session.add_all([review1, review2])
-    db.session.commit()
-
-    # Seed Addresses
-    address1 = Address(
-        user_id=user1.id,
-        street="123 Main St",
-        city="Anytown",
-        state="Anystate",
-        zip_code="12345",
-        country="USA"
-    )
-
-    db.session.add(address1)
-    db.session.commit()
-
-    # Seed Payments
-    payment1 = Payment(
-        user_id=user1.id,
-        order_id=order1.id,
-        amount=719.98,
-        payment_method="Credit Card",
-        status="Completed"
-    )
-
-    db.session.add(payment1)
-    db.session.commit()
-
-    # Seed Discounts
-    discount1 = Discount(
-        product_id=product1.id,
-        discount_percentage=10.0,
-        start_date=datetime.utcnow(),
-        end_date=datetime.utcnow() + timedelta(days=30)
-    )
-
-    db.session.add(discount1)
-    db.session.commit()
-
-    print("Database seeded successfully.")
+if __name__ == "__main__":
+    seed_db()

@@ -1,128 +1,135 @@
-from flask import Flask
+#!/usr/bin/env python3
+
+import os
+from flask import Flask, request, make_response, jsonify, session, render_template, redirect, url_for, flash
+from flask_migrate import Migrate
+from flask_restful import Api, Resource
 from flask_sqlalchemy import SQLAlchemy
 from flask_bcrypt import Bcrypt
-from datetime import datetime
-from models import db, User, Product, Category, Order, OrderItem, Review  # Adjust imports as per your project structure
+from flask_wtf import FlaskForm
+from wtforms import StringField, PasswordField, validators, IntegerField
+from sqlalchemy.exc import IntegrityError
+from models import db, User
+from flask_cors import CORS
+from flask_restful import reqparse
+import jwt
+from datetime import datetime, timedelta
+from functools import wraps
+# from flask_mail import Mail, Message
+
 
 app = Flask(__name__)
-app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///app.db'  # Change to your database URI if needed
+app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///app.db'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+app.config['SECRET_KEY'] = b'G\xb2\xa4\xff\xc6~bM\xb9\x8c\xb3M'
 
 db.init_app(app)
 bcrypt = Bcrypt(app)
+api = Api(app)
+CORS(app)
+migrate = Migrate(app, db)
 
-def seed_db():
-    with app.app_context():
-        # Clear existing data
-        db.drop_all()
-        db.create_all()
+def token_required(func):
+    @wraps(func)
+    def decorated(*args, **kwargs):
+        token = request.args.get('token')
+        if not token:
+            return jsonify({'Alert!': 'Token is missing'}), 401
+        try:
+            payload = jwt.decode(token, app.config['SECRET_KEY'])
+        except jwt.ExpiredSignatureError:
+            return jsonify({'Alert!': 'Token has expired'}), 401
+        except jwt.InvalidTokenError:
+            return jsonify({'Alert!': 'Invalid Token!'}), 401
+        return func(*args, **kwargs)
 
-        # Seed users
-        users = [
-            User(firstname="John", lastname="Doe", username="johndoe", email="johndoe@example.com", password_hash=bcrypt.generate_password_hash("password").decode('utf-8')),
-            User(firstname="Jane", lastname="Smith", username="janesmith", email="janesmith@example.com", password_hash=bcrypt.generate_password_hash("password").decode('utf-8')),
-            User(firstname="Alice", lastname="Brown", username="alicebrown", email="alicebrown@example.com", password_hash=bcrypt.generate_password_hash("password").decode('utf-8')),
-            User(firstname="Bob", lastname="Jones", username="bobjones", email="bobjones@example.com", password_hash=bcrypt.generate_password_hash("password").decode('utf-8')),
-            User(firstname="Charlie", lastname="Davis", username="charliedavis", email="charliedavis@example.com", password_hash=bcrypt.generate_password_hash("password").decode('utf-8')),
-            User(firstname="David", lastname="Evans", username="davidevans", email="davidevans@example.com", password_hash=bcrypt.generate_password_hash("password").decode('utf-8')),
-            User(firstname="Eve", lastname="Green", username="evegreen", email="evegreen@example.com", password_hash=bcrypt.generate_password_hash("password").decode('utf-8')),
-            User(firstname="Frank", lastname="Harris", username="frankharris", email="frankharris@example.com", password_hash=bcrypt.generate_password_hash("password").decode('utf-8')),
-            User(firstname="Grace", lastname="Ivy", username="graceivy", email="graceivy@example.com", password_hash=bcrypt.generate_password_hash("password").decode('utf-8')),
-            User(firstname="Henry", lastname="James", username="henryjames", email="henryjames@example.com", password_hash=bcrypt.generate_password_hash("password").decode('utf-8'))
-        ]
+    return decorated
 
-        db.session.bulk_save_objects(users)
+
+
+@app.route('/signup', methods=['POST'])
+def signup():
+    # Parse incoming JSON data
+    data = request.get_json()
+
+    # Validate incoming data
+    required_fields = ['username', 'email', 'password', 'firstname', 'lastname']
+    if not all(key in data for key in required_fields):
+        return jsonify({'error': 'Missing required fields'}), 400
+
+    # Check if the username or email already exists
+    if User.query.filter_by(username=data['username']).first() or User.query.filter_by(email=data['email']).first():
+        return jsonify({'error': 'Username or email already exists. Please choose a different one.'}), 400
+
+    # Create a new user instance
+    new_user = User(
+        username=data['username'],
+        email=data['email'],
+        firstname=data['firstname'],
+        lastname=data['lastname']
+    )
+    new_user.password_hash = data['password']
+
+    # Add the new user to the database
+    db.session.add(new_user)
+
+    try:
+        # Commit the session to persist the changes
         db.session.commit()
+        return jsonify({'message': 'User created successfully'}), 200
+    except:
+        # Rollback the session in case of an error
+        db.session.rollback()
+        return jsonify({'error': 'Failed to create user'}), 500
 
-        # Seed categories
-        categories = [
-            Category(name="Living Room"),
-            Category(name="Bedroom"),
-            Category(name="Kitchen"),
-            Category(name="Bathroom"),
-            Category(name="Office"),
-            Category(name="Outdoor"),
-            Category(name="Lighting"),
-            Category(name="Decor"),
-            Category(name="Furniture"),
-            Category(name="Storage")
-        ]
+@app.route('/login', methods=['POST'])
+def login():
+    data = request.get_json()
+    username = data.get('username')
+    password = data.get('password')
 
-        db.session.bulk_save_objects(categories)
-        db.session.commit()
+    if not username or not password:
+        return {'error': 'Missing username or password'}, 400
 
-        # Seed products
-        products = [
-            Product(name="Sofa", description="A comfortable three-seater sofa.", price=500.0, category_id=1),
-            Product(name="Bed", description="A king-sized bed with storage.", price=1000.0, category_id=2),
-            Product(name="Dining Table", description="A wooden dining table for six.", price=750.0, category_id=3),
-            Product(name="Shower Curtain", description="A waterproof shower curtain.", price=20.0, category_id=4),
-            Product(name="Office Chair", description="An ergonomic office chair.", price=150.0, category_id=5),
-            Product(name="Patio Set", description="An outdoor patio set with table and chairs.", price=300.0, category_id=6),
-            Product(name="Chandelier", description="A modern chandelier with LED lights.", price=200.0, category_id=7),
-            Product(name="Wall Art", description="A set of three abstract wall art pieces.", price=100.0, category_id=8),
-            Product(name="Bookshelf", description="A tall wooden bookshelf.", price=250.0, category_id=9),
-            Product(name="Wardrobe", description="A spacious wardrobe with sliding doors.", price=800.0, category_id=10)
-        ]
+    # Replace this logic with your actual authentication mechanism (e.g., querying the database)
+    user = User.query.filter_by(username=username).first()
 
-        db.session.bulk_save_objects(products)
-        db.session.commit()
+    if user and bcrypt.check_password_hash(user._password_hash, password):
+        token = jwt.encode({
+            'user': username,
+            'exp': datetime.utcnow() + timedelta(seconds=120)
+        },
+        app.config['SECRET_KEY'])
 
-        # Seed orders
-        orders = [
-            Order(user_id=1, total_price=520.0, status="Completed"),
-            Order(user_id=2, total_price=1150.0, status="Processing"),
-            Order(user_id=3, total_price=770.0, status="Completed"),
-            Order(user_id=4, total_price=170.0, status="Shipped"),
-            Order(user_id=5, total_price=1250.0, status="Completed"),
-            Order(user_id=6, total_price=350.0, status="Processing"),
-            Order(user_id=7, total_price=220.0, status="Shipped"),
-            Order(user_id=8, total_price=900.0, status="Completed"),
-            Order(user_id=9, total_price=150.0, status="Processing"),
-            Order(user_id=10, total_price=1050.0, status="Shipped")
-        ]
+        return {'token': token}
 
-        db.session.bulk_save_objects(orders)
-        db.session.commit()
+    else:
+        return {'error': 'Invalid username or password'}, 401
+    
+@app.route('/logout', methods=["DELETE"])
+def logout():
+    session['user_id'] = None
+    return {'message': 'Logout successful'}, 200
 
-        # Seed order items
-        order_items = [
-            OrderItem(order_id=1, product_id=1, quantity=1, price=500.0),
-            OrderItem(order_id=1, product_id=4, quantity=1, price=20.0),
-            OrderItem(order_id=2, product_id=2, quantity=1, price=1000.0),
-            OrderItem(order_id=2, product_id=5, quantity=1, price=150.0),
-            OrderItem(order_id=3, product_id=3, quantity=1, price=750.0),
-            OrderItem(order_id=3, product_id=7, quantity=1, price=20.0),
-            OrderItem(order_id=4, product_id=8, quantity=1, price=100.0),
-            OrderItem(order_id=4, product_id=6, quantity=1, price=70.0),
-            OrderItem(order_id=5, product_id=9, quantity=1, price=250.0),
-            OrderItem(order_id=5, product_id=10, quantity=1, price=1000.0),
-            OrderItem(order_id=6, product_id=3, quantity=1, price=750.0),
-            OrderItem(order_id=7, product_id=2, quantity=1, price=1000.0),
-            OrderItem(order_id=8, product_id=1, quantity=1, price=500.0),
-            OrderItem(order_id=9, product_id=4, quantity=1, price=20.0),
-            OrderItem(order_id=10, product_id=5, quantity=1, price=150.0)
-        ]
+@app.route('/public')
+def public():
+    return 'for public'
 
-        db.session.bulk_save_objects(order_items)
-        db.session.commit()
 
-        # Seed reviews
-        reviews = [
-            Review(user_id=1, product_id=1, rating=5, comment="Excellent sofa!"),
-            Review(user_id=2, product_id=2, rating=4, comment="Great bed."),
-            Review(user_id=3, product_id=3, rating=5, comment="Loved this dining table."),
-            Review(user_id=4, product_id=4, rating=4, comment="Very practical shower curtain."),
-            Review(user_id=5, product_id=5, rating=3, comment="Chair is okay."),
-            Review(user_id=6, product_id=6, rating=5, comment="Perfect for our patio!"),
-            Review(user_id=7, product_id=7, rating=4, comment="Nice chandelier."),
-            Review(user_id=8, product_id=8, rating=4, comment="Beautiful wall art."),
-            Review(user_id=9, product_id=9, rating=5, comment="Great bookshelf."),
-            Review(user_id=10, product_id=10, rating=5, comment="Very spacious wardrobe.")
-        ]
+@app.route('/auth')
+@token_required
+def auth():
+    return 'JWT is verified. Welcome to your dashboard'
 
-        db.session.bulk_save_objects(reviews)
-        db.session.commit()
+@app.route('/checksession', methods=["GET"])
+def checksession():
+    
+    user_id = session['user_id']
+    if user_id:
+        user = User.query.filter(User.id == user_id).first()
+        return user.to_dict(), 200
+    
+    return {}, 401 
 
-if __name__ == "__main__":
-    seed_db()
+if  __name__ == '__main__':
+    app.run(port=5555, debug=True)
