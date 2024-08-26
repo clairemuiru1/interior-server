@@ -154,6 +154,23 @@ def create_address():
     
     return jsonify({'message': 'Address created successfully', 'address': new_address.id}), 201
 
+@app.route('/address/<int:id>', methods=['GET'])
+def get_address(id):
+    address = Address.query.get(id)
+    
+    if address is None:
+        return jsonify({'error': 'Address not found'}), 404
+
+    return jsonify({
+        'user_id': address.user_id,
+        'street': address.street,
+        'city': address.city,
+        'state': address.state,
+        'zip_code': address.zip_code,
+        'country': address.country,
+        'created_at': address.created_at.isoformat(),
+        'updated_at': address.updated_at.isoformat()
+    }), 200
 
 if  __name__ == '__main__':
     app.run(port=5555, debug=True)
